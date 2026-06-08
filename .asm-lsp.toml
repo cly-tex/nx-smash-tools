@@ -1,0 +1,7 @@
+[default_config]
+# Configure documentation available for features like hover and completions
+assembler = "gas"
+instruction_set = "arm64"
+
+[default_config.opts]
+compiler = "aarch64-unknown-elf-gcc"
