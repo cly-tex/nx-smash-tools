@@ -12,7 +12,7 @@
             "--message-format=json-diagnostic-rendered-ansi",
             "-Zjson-target-spec",
             "--target",
-            "{{PROJECT_DIR}}/.build-files/target.json",
+            "{{PROJECT_DIR}}/.build-files/switch.json",
             "-Zbuild-std=core"
           ]
         }
