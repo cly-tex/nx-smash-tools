@@ -1,3 +1,7 @@
 [workspace]
-members = ["snake"]
+members = ["rtld","snake", "snake-logger"]
 resolver = "3"
+
+[profile.release]
+panic = "abort"
+lto = true

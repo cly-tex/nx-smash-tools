@@ -7,7 +7,7 @@ use crate::nnfs::{FileHandle, OpenMode, WriteOptions};
 mod nnfs;
 
 #[unsafe(export_name = "snake_module_object")]
-static mut SNAKE_MODULE_OBJECT: MaybeUninit<[u8; 0x100]> = MaybeUninit::uninit();
+static mut SNAKE_MODULE_OBJECT: MaybeUninit<rtld::ModuleObject> = MaybeUninit::uninit();
 
 core::arch::global_asm!(include_str!("crt0.s"));
 

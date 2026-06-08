@@ -1,4 +1,3 @@
-
 .section ".text.crt0","ax"
 .global __module_start
 __module_start:
