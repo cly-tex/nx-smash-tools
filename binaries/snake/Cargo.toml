@@ -1,10 +1,10 @@
 [package]
-name = "snake-logger"
+name = "snake"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rtld = { path = "../rtld" }
+rtld.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

@@ -1,6 +1,9 @@
 [workspace]
-members = ["rtld","snake", "snake-logger"]
+members = ["binaries/*", "lib/*"]
 resolver = "3"
+
+[workspace.dependencies]
+rtld = { path = "lib/rtld" }
 
 [profile.release]
 panic = "abort"
