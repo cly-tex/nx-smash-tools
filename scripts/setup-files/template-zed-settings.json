@@ -1,0 +1,22 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "check": {
+          "overrideCommand": [
+            "rustup",
+            "run",
+            "nightly",
+            "cargo",
+            "clippy",
+            "--message-format=json-diagnostic-rendered-ansi",
+            "-Zjson-target-spec",
+            "--target",
+            "{{PROJECT_DIR}}/.build-files/target.json",
+            "-Zbuild-std=core"
+          ]
+        }
+      }
+    }
+  }
+}
