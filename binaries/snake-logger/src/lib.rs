@@ -31,7 +31,7 @@ unsafe extern "C" fn main() {
     let service_manager = ServiceManager::new().unwrap();
 
     service_manager.register_client().unwrap();
-    let service = loop {
+    let _ = loop {
         match service_manager.get_service_handle(b"hid") {
             Ok(service) => break service,
             Err(0xf201) => nx::svc::sleep_thread(Duration::from_millis(50)),
@@ -40,10 +40,6 @@ unsafe extern "C" fn main() {
             },
         }
     };
-
-    unsafe {
-        *(service as u64 as *mut u32) = 0x69;
-    }
 
     loop {
         nx::svc::sleep_thread(Duration::from_millis(50));
