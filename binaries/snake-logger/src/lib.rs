@@ -22,7 +22,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
 /// it's up to that implementation to be correct in obtaining the module base
 unsafe extern "C" fn relocate_self(aslr_base: usize, dynamic: *const rtld::Dyn64) {
     // SAFETY: Caller upholds the safety invariants
-    // unsafe { rtld::relocate_raw(aslr_base, dynamic) }
+    unsafe { rtld::relocate_raw(aslr_base, dynamic) }
 }
 
 unsafe extern "C" fn main() {
