@@ -3,6 +3,7 @@ members = ["binaries/*", "lib/*"]
 resolver = "3"
 
 [workspace.dependencies]
+nx = { path = "lib/nx" }
 rtld = { path = "lib/rtld" }
 
 [profile.release]

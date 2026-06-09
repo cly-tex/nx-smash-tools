@@ -17,7 +17,7 @@
 
 .global __module_start
 __module_start:
-    .b entrypoint
+    b entrypoint
     .word __nx_mod0 - __module_start
     .word __sdk_version - __module_start
     .align 4
@@ -63,14 +63,12 @@ bss_loop:
     // Parse ELF .dynamic section (which applies relocations to our module)
     mov x0, x23
     FROM_MOD0 1, 0x4
-    bl   relocate_self
+    bl   {} // Symbol passed from Rust
 
     mov  x0, x25
     mov  x1, x26
-    b main
-
+    b    {} // Symbol passed from Rust
     // failsafe
-    .word 0xdeadbeef
 
 snake_exception_handler:
     .word 0xdeadbeef

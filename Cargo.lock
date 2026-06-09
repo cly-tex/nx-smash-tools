@@ -39,5 +39,6 @@ dependencies = [
 name = "snake-logger"
 version = "0.1.0"
 dependencies = [
+ "nx",
  "rtld",
 ]
