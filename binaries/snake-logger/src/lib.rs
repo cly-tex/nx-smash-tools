@@ -1,6 +1,6 @@
 #![no_std]
 
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, time::Duration};
 
 core::arch::global_asm!(
     include_str!("crt0.s"),
@@ -26,5 +26,20 @@ unsafe extern "C" fn relocate_self(aslr_base: usize, dynamic: *const rtld::Dyn64
 }
 
 unsafe extern "C" fn main() {
-    nx::svc::break_now();
+    // Start by getting the service-manager handle
+    let sm_handle = loop {
+        match nx::svc::connect_to_named_port(c"sm:") {
+            Ok(handle) => break handle,
+            Err(0xf201) => {
+                nx::svc::sleep_thread(Duration::from_millis(50));
+            }
+            Err(code) => {
+                panic!("failed to connect to named port: {code:#x}");
+            }
+        }
+    };
+
+    loop {
+        nx::svc::sleep_thread(Duration::from_millis(50));
+    }
 }

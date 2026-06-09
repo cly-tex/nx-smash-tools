@@ -1,0 +1,96 @@
+{
+  "service_manager": {
+    "RegisterClient": {
+      "command_id": 0,
+      "input": {
+        "header": {
+          "pid": true
+        },
+        "payload": [
+          {
+            "type": "u64",
+            "name": "placeholder"
+          }
+        ]
+      },
+      "output": {}
+    },
+    "GetServiceHandle": {
+      "command_id": 1,
+      "input": {
+        "payload": [
+          {
+            "type": "crate::ServiceName",
+            "name": "name"
+          }
+        ]
+      },
+      "output": {
+        "header": {
+          "handles": [
+            {
+              "type": "Move",
+              "name": "service"
+            }
+          ]
+        }
+      }
+    },
+    "RegisterService": {
+      "command_id": 2,
+      "input": {
+        "payload": [
+          {
+            "type": "crate::ServiceName",
+            "name": "name"
+          },
+          {
+            "type": "bool",
+            "name": "is_light"
+          },
+          {
+            "type": "i32",
+            "name": "max_sessions"
+          }
+        ]
+      },
+      "output": {
+        "header": {
+          "handles": [
+            {
+              "type": "Move",
+              "name": "service"
+            }
+          ]
+        }
+      }
+    },
+    "UnregisterService": {
+      "command_id": 3,
+      "input": {
+        "payload": [
+          {
+            "type": "crate::ServiceName",
+            "name": "name"
+          }
+        ]
+      },
+      "output": {}
+    },
+    "DetachClient": {
+      "command_id": 4,
+      "input": {
+        "header": {
+          "send_pid": true
+        },
+        "payload": [
+          {
+            "type": "u64",
+            "name": "placeholder"
+          }
+        ]
+      },
+      "output": {}
+    }
+  }
+}
