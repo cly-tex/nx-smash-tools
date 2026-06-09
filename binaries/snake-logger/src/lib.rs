@@ -2,6 +2,8 @@
 
 use core::{mem::MaybeUninit, time::Duration};
 
+use services::ServiceManager;
+
 core::arch::global_asm!(
     include_str!("crt0.s"),
     sym relocate_self,
@@ -26,18 +28,22 @@ unsafe extern "C" fn relocate_self(aslr_base: usize, dynamic: *const rtld::Dyn64
 }
 
 unsafe extern "C" fn main() {
-    // Start by getting the service-manager handle
-    let sm_handle = loop {
-        match nx::svc::connect_to_named_port(c"sm:") {
-            Ok(handle) => break handle,
-            Err(0xf201) => {
-                nx::svc::sleep_thread(Duration::from_millis(50));
-            }
-            Err(code) => {
-                panic!("failed to connect to named port: {code:#x}");
-            }
+    let service_manager = ServiceManager::new().unwrap();
+
+    service_manager.register_client().unwrap();
+    let service = loop {
+        match service_manager.get_service_handle(b"hid") {
+            Ok(service) => break service,
+            Err(0xf201) => nx::svc::sleep_thread(Duration::from_millis(50)),
+            Err(e) => unsafe {
+                *(e as u64 as *mut u32) = 0x69;
+            },
         }
     };
+
+    unsafe {
+        *(service as u64 as *mut u32) = 0x69;
+    }
 
     loop {
         nx::svc::sleep_thread(Duration::from_millis(50));

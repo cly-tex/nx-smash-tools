@@ -62,6 +62,8 @@ fn emit_command_io(
     let _ = write!(out_code, "header0:crate::types::Header0Tag,");
     let _ = write!(out_code, "header1:crate::types::Header1Tag,");
 
+    struct_size += 8;
+
     let has_special = command.header.send_pid || !command.header.handles.is_empty();
     if has_special {
         let _ = write!(out_code, "special:crate::types::SpecialTag,");
@@ -121,7 +123,7 @@ fn emit_command_io(
     );
     let _ = write!(
         out_code,
-        "const HEADER1:crate::types::Header1Tag=crate::types::Header1Tag::new((::core::mem::offset_of!({name}{0}, post_cmif_padding) - ::core::mem::offset_of!({name}{0}, cmif_header) + 4) as u32,0,0,{has_special});",
+        "const HEADER1:crate::types::Header1Tag=crate::types::Header1Tag::new((((::core::mem::offset_of!({name}{0}, post_cmif_padding) - ::core::mem::offset_of!({name}{0}, cmif_header)) / 4) + 4) as u32,0,0,{has_special});",
         if is_in { "Request" } else { "Response" }
     );
     if has_special {

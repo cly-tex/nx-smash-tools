@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 nx.workspace = true
 rtld.workspace = true
+services.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

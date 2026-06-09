@@ -4,7 +4,7 @@
       "command_id": 0,
       "input": {
         "header": {
-          "pid": true
+          "send_pid": true
         },
         "payload": [
           {

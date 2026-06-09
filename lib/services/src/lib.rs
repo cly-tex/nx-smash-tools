@@ -1,6 +1,8 @@
 #![no_std]
 #![feature(likely_unlikely)]
 
+use core::time::Duration;
+
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated_service_api.rs"));
 }
@@ -81,7 +83,15 @@ impl ServiceManager {
     /// This will fail if it is unable to acquire a handle to the `sm:` port, which might happen
     /// if a `ServiceManager` already exists
     pub fn new() -> Result<Self, u32> {
-        nx::svc::connect_to_named_port(c"sm:").map(Self)
+        loop {
+            match nx::svc::connect_to_named_port(c"sm:") {
+                Ok(handle) => {
+                    break Ok(Self(handle));
+                }
+                Err(0xf201) => nx::svc::sleep_thread(Duration::from_millis(50)),
+                Err(e) => break Err(e),
+            }
+        }
     }
 
     /// Registers this process as a client of the `ServiceManager`
