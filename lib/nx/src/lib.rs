@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(likely_unlikely)]
 
 pub mod arm;
+pub mod result;
 pub mod svc;

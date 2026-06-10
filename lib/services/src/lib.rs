@@ -3,7 +3,9 @@
 
 use core::time::Duration;
 
-mod generated {
+use nx::result::NxResult;
+
+pub(crate) mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated_service_api.rs"));
 }
 
@@ -82,13 +84,13 @@ impl ServiceManager {
     /// # Notes
     /// This will fail if it is unable to acquire a handle to the `sm:` port, which might happen
     /// if a `ServiceManager` already exists
-    pub fn new() -> Result<Self, u32> {
+    pub fn new() -> NxResult<Self> {
         loop {
             match nx::svc::connect_to_named_port(c"sm:") {
                 Ok(handle) => {
                     break Ok(Self(handle));
                 }
-                Err(0xf201) => nx::svc::sleep_thread(Duration::from_millis(50)),
+                Err(nx::result::svc::NOT_FOUND) => nx::svc::sleep_thread(Duration::from_millis(50)),
                 Err(e) => break Err(e),
             }
         }
