@@ -25,7 +25,6 @@ __module_start:
 
 entrypoint:
     cmp x0, #0
-    ccmn x1, #1, #4, ne // 4 = Z
     beq get_module_info
     b snake_exception_handler
 
@@ -57,17 +56,17 @@ bss_loop:
     bne  bss_loop
 
     // Preserve registers across function calls
-    mov x25, x0  // entrypoint argument 0
-    mov x26, x1  // entrypoint argument 1
+    mov x25, x1  // entrypoint argument 1 (x0 was 0x0)
 
     // Parse ELF .dynamic section (which applies relocations to our module)
     mov x0, x23
     FROM_MOD0 1, 0x4
-    bl   {} // Symbol passed from Rust
+    bl    {} // Symbol passed from Rust
 
     mov  x0, x25
-    mov  x1, x26
-    b    {} // Symbol passed from Rust
+    bl    {} // Symbol passed from Rust
+
+    bl    {} // Main function entrypoint
     // failsafe
 
 snake_exception_handler:

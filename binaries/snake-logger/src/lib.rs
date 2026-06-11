@@ -8,6 +8,7 @@ use services::ServiceManager;
 core::arch::global_asm!(
     include_str!("crt0.s"),
     sym relocate_self,
+    sym nx::init::nx_init,
     sym main,
 );
 
@@ -28,7 +29,7 @@ unsafe extern "C" fn relocate_self(aslr_base: usize, dynamic: *const rtld::Dyn64
     unsafe { rtld::relocate_raw(aslr_base, dynamic) }
 }
 
-unsafe extern "C" fn main() {
+pub extern "C" fn main() {
     let service_manager = ServiceManager::new().unwrap();
 
     service_manager.register_client().unwrap();

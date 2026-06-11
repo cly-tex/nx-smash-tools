@@ -6,6 +6,8 @@ use core::{
 
 use crate::result::{NxResult, NxResultCode};
 
+pub mod info;
+
 core::arch::global_asm!(include_str!("svc.s"));
 
 #[repr(transparent)]
@@ -50,6 +52,7 @@ unsafe extern "C" {
     fn svcConnectToNamedPort(out_handle: *mut u32, port_name: *const c_char) -> NxResultCode;
     fn svcSendSyncRequest(handle: u32) -> NxResultCode;
     fn svcBreak(reason: BreakReason, _: u64, _: u64);
+    fn svcGetInfo(out: *mut u64, info_type: u32, handle: u32, info_subtype: u64) -> NxResultCode;
 }
 
 /// Yields the current thread

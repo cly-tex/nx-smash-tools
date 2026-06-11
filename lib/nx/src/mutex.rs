@@ -130,7 +130,7 @@
  *    and for prompting me to finally learn memory access boundaries
  */
 
-use core::cell::UnsafeCell;
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 
 use crate::svc::BreakReason;
 
@@ -168,9 +168,12 @@ fn clear_exclusive() {
     unsafe { core::arch::asm!("clrex", options(nostack)) }
 }
 
-pub struct Mutex(UnsafeCell<u32>);
+pub struct RawMutex(UnsafeCell<u32>);
 
-impl Mutex {
+unsafe impl Send for RawMutex {}
+unsafe impl Sync for RawMutex {}
+
+impl RawMutex {
     const WAITER_MASK: u32 = 1u32 << 30;
 
     pub const fn new() -> Self {
@@ -286,8 +289,106 @@ impl Mutex {
     }
 }
 
-impl Default for Mutex {
+impl Default for RawMutex {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub struct Mutex<T> {
+    value: UnsafeCell<T>,
+    raw: RawMutex,
+}
+
+unsafe impl<T> Send for Mutex<T> {}
+unsafe impl<T> Sync for Mutex<T> {}
+
+impl<T> Mutex<T> {
+    pub const fn new(value: T) -> Self {
+        Self {
+            value: UnsafeCell::new(value),
+            raw: RawMutex::new(),
+        }
+    }
+
+    pub fn lock(&self) -> MutexGuard<'_, T> {
+        self.raw.lock();
+        MutexGuard {
+            raw: &self.raw,
+            value: self.value.get(),
+        }
+    }
+
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        if self.raw.try_lock() {
+            Some(MutexGuard {
+                raw: &self.raw,
+                value: self.value.get(),
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        self.value.get_mut()
+    }
+}
+
+impl<T> Mutex<MaybeUninit<T>> {
+    /// # Safety
+    /// Caller must ensure that the value contained by this mutex is initialized
+    pub unsafe fn lock_assume_init(&self) -> MutexGuard<'_, T> {
+        // SAFETY: Caller upholds safety
+        MutexGuard::map(self.lock(), |value| unsafe { value.assume_init_mut() })
+    }
+
+    /// # Safety
+    /// Caller must ensure that the value contained by this mutex is initialized
+    pub unsafe fn try_lock_assume_init(&self) -> Option<MutexGuard<'_, T>> {
+        // SAFETY: Caller upholds safety
+        self.try_lock()
+            .map(|lock| MutexGuard::map(lock, |value| unsafe { value.assume_init_mut() }))
+    }
+}
+
+pub struct MutexGuard<'a, T> {
+    raw: &'a RawMutex,
+    value: *mut T,
+}
+
+impl<'a, T: 'a> MutexGuard<'a, T> {
+    pub fn map<U: 'a>(this: Self, f: impl FnOnce(&'a mut T) -> &'a mut U) -> MutexGuard<'a, U> {
+        let value = f(unsafe { &mut *this.value });
+
+        let mapped = MutexGuard {
+            raw: this.raw,
+            value,
+        };
+
+        // Important to forget this as to not prematurely unlock the mutex during drop
+        core::mem::forget(this);
+
+        mapped
+    }
+}
+
+impl<'a, T> core::ops::Deref for MutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.value }
+    }
+}
+
+impl<'a, T> core::ops::DerefMut for MutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.value }
+    }
+}
+
+impl<'a, T> Drop for MutexGuard<'a, T> {
+    fn drop(&mut self) {
+        self.raw.unlock();
     }
 }

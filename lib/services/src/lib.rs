@@ -15,6 +15,7 @@ pub(crate) mod generated {
 mod types;
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ServiceName([u8; 8]);
 
 const _: () = {
