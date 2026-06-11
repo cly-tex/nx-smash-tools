@@ -2,6 +2,7 @@
 
 use core::{mem::MaybeUninit, time::Duration};
 
+use nx::svc::BreakReason;
 use services::ServiceManager;
 
 core::arch::global_asm!(
@@ -14,8 +15,8 @@ core::arch::global_asm!(
 static mut SNAKE_MODULE_OBJECT: MaybeUninit<rtld::ModuleObject> = MaybeUninit::uninit();
 
 #[panic_handler]
-fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    nx::svc::break_now();
+fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
+    nx::svc::break_now(BreakReason::PANIC);
     loop {}
 }
 

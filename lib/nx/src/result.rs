@@ -1,5 +1,7 @@
 use core::num::NonZeroU32;
 
+use crate::svc::BreakReason;
+
 pub type NxResult<T> = Result<T, NxError>;
 
 pub enum NxResultCode {
@@ -8,6 +10,13 @@ pub enum NxResultCode {
 }
 
 impl NxResultCode {
+    pub fn assert(self) {
+        match self {
+            Self::Success => {}
+            Self::Error(_) => crate::svc::break_now(BreakReason::ASSERT),
+        }
+    }
+
     pub fn then<T>(self, f: impl FnOnce() -> T) -> NxResult<T> {
         match self {
             Self::Success => Ok(f()),
