@@ -88,11 +88,23 @@ impl ThreadLocalRegion {
     /// This does a const-time check to ensure that `size_of::<T>() < 0x100`
     #[inline]
     pub fn write_ipc_buffer<T: Copy + Sized>(&mut self, value: T) {
-        let _: () = const { assert!(size_of::<T>() < size_of::<[u8; 0x100]>()) };
+        let _: () = const { assert!(size_of::<T>() <= size_of::<[u8; 0x100]>()) };
 
         unsafe {
-            *self.ipc_buffer.as_mut_ptr().cast::<T>() = value;
+            core::ptr::write(self.ipc_buffer.as_mut_ptr().cast(), value);
         }
+    }
+
+    /// Reads the IPC region of memory as the specified type
+    ///
+    /// # Safety
+    /// The IPC region is raw-bytes, it's up to the caller to match the contents of the IPC
+    /// buffer to the type they want to read
+    #[inline]
+    pub unsafe fn read_ipc_buffer<T: Copy + Sized>(&self) -> T {
+        let _: () = const { assert!(size_of::<T>() <= size_of::<[u8; 0x100]>()) };
+
+        unsafe { core::ptr::read(self.ipc_buffer.as_ptr().cast::<T>()) }
     }
 }
 
@@ -115,6 +127,18 @@ const _: () = {
 #[inline]
 pub fn write_ipc_buffer<T: Copy + Sized>(value: T) {
     with_tls(move |tls| tls.write_ipc_buffer(value));
+}
+
+/// Reads the IPC region of the TLS
+///
+/// This is rhot hand for `with_tls(|tls| tls.read_ipc_buffer::<T>())`
+///
+/// # Safety
+/// See [`ThreadLocalRegion::read_ipc_buffer`] for safety information
+#[inline]
+pub unsafe fn read_ipc_buffer<T: Copy + Sized>() -> T {
+    // SAFETY: Caller upholds safety requirements
+    with_tls(|tls| unsafe { tls.read_ipc_buffer::<T>() })
 }
 
 /// Scopes access to the TLS region to avoid Rust aliasing problems

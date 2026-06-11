@@ -42,6 +42,29 @@ impl NxResultCode {}
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct NxError(NonZeroU32);
 
+impl core::fmt::Debug for NxError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let module = MODULES
+            .get(self.module().get() as usize)
+            .copied()
+            .unwrap_or(ModuleDescriptor::new());
+        let desc = module
+            .descriptions
+            .get(self.description() as usize)
+            .unwrap_or(&"<unknown>");
+
+        write!(
+            f,
+            "{:#x} {}:{} ({}-{})",
+            self.0.get(),
+            module.name,
+            desc,
+            self.module().get(),
+            self.description()
+        )
+    }
+}
+
 #[rustfmt::skip]
 impl NxError {
     const MODULE_MASK:       u32 = 0x000001FF;
@@ -99,19 +122,78 @@ impl NxError {
     }
 }
 
+#[derive(Copy, Clone)]
+struct ModuleDescriptor {
+    name: &'static str,
+    descriptions: &'static [&'static str],
+}
+
+impl ModuleDescriptor {
+    const fn new() -> Self {
+        Self {
+            name: "<unknown>",
+            descriptions: &[],
+        }
+    }
+}
+
 macro_rules! define_error_codes {
-    ($module_name:ident($value:expr) {
+    ($($module_name:ident($value:expr) {
         $(
             $error_name:ident = $desc_value:expr;
         )*
-    }) => {
-        pub mod $module_name {
-            pub const MODULE_CODE: core::num::NonZeroU32 = const { core::num::NonZeroU32::new($value).unwrap() };
-
+    };)*) => {
+        #[doc(hidden)]
+        const NUM_MODULES: usize = const {
+            let mut max = 0usize;
             $(
-                pub const $error_name: super::NxError = const { super::NxError::from_parts(MODULE_CODE, $desc_value).unwrap() };
+                if max < $value {
+                    max = $value;
+                }
             )*
-        }
+            max + 1
+        };
+
+        const MODULES: [ModuleDescriptor; NUM_MODULES] = const {
+            let mut modules = [const { ModuleDescriptor::new() }; NUM_MODULES];
+            $(
+                modules[$value] = $module_name::DESCRIPTOR;
+            )*
+            modules
+        };
+
+        $(
+            pub mod $module_name {
+                const NUM_DESCRIPTIONS: usize = const {
+                    let mut max = 0usize;
+                    $(
+                        if max < $desc_value {
+                            max = $desc_value;
+                        }
+                    )*
+
+                    max + 1
+                };
+                const DESCRIPTION_NAMES: [&'static str; NUM_DESCRIPTIONS] = const {
+                    let mut descs = ["<unknown>"; NUM_DESCRIPTIONS];
+                    $(
+                        descs[$desc_value] = stringify!($error_name);
+                    )*
+                    descs
+                };
+
+                pub(super) const DESCRIPTOR: super::ModuleDescriptor = super::ModuleDescriptor {
+                    name: stringify!($module_name),
+                    descriptions: &DESCRIPTION_NAMES
+                };
+
+                pub const MODULE_CODE: core::num::NonZeroU32 = const { core::num::NonZeroU32::new($value).unwrap() };
+
+                $(
+                    pub const $error_name: super::NxError = const { super::NxError::from_parts(MODULE_CODE, $desc_value).unwrap() };
+                )*
+            }
+        )*
     }
 }
 
@@ -170,5 +252,5 @@ define_error_codes! {
         INVALID_THREAD_ID             = 518;
         INVALID_ID                    = 519;
         PROCESS_TERMINATED            = 520;
-    }
+    };
 }

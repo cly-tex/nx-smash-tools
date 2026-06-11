@@ -55,7 +55,7 @@ fn emit_command_io(
 
     let _ = write!(
         out_code,
-        "#[repr(C)] pub struct {name}{}{{",
+        "#[repr(C)] #[derive(Copy, Clone)] pub struct {name}{}{{",
         if is_in { "Request" } else { "Response" }
     );
 

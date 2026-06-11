@@ -1,4 +1,5 @@
 #[repr(transparent)]
+#[derive(Copy, Clone)]
 pub struct Header0Tag(u32);
 
 #[rustfmt::skip]
@@ -28,6 +29,7 @@ impl Header0Tag {
 }
 
 #[repr(transparent)]
+#[derive(Copy, Clone)]
 pub struct Header1Tag(u32);
 
 #[rustfmt::skip]
@@ -53,6 +55,7 @@ impl Header1Tag {
 }
 
 #[repr(transparent)]
+#[derive(Copy, Clone)]
 pub struct SpecialTag(u32);
 
 #[rustfmt::skip]
@@ -76,6 +79,7 @@ impl SpecialTag {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct CmifInHeader {
     signature: u32,
     version: u16,
@@ -100,6 +104,7 @@ impl CmifInHeader {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct CmifOutHeader {
     signature: u32,
     version: u16,

@@ -3,7 +3,10 @@
 
 use core::time::Duration;
 
-use nx::result::NxResult;
+use nx::{
+    result::NxResult,
+    thread::{read_ipc_buffer, write_ipc_buffer},
+};
 
 pub(crate) mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated_service_api.rs"));
@@ -99,13 +102,11 @@ impl ServiceManager {
     /// Registers this process as a client of the `ServiceManager`
     pub fn register_client(&self) -> Result<(), u32> {
         use generated::service_manager::*;
-        unsafe {
-            *nx::arm::tls().cast::<RegisterClientRequest>() = RegisterClientRequest::new(0);
-        }
+        nx::thread::write_ipc_buffer(RegisterClientRequest::new(0));
 
         nx::svc::send_sync_request(self.0).unwrap();
 
-        let response = unsafe { &*nx::arm::tls().cast::<RegisterClientResponse>() };
+        let response: RegisterClientResponse = unsafe { nx::thread::read_ipc_buffer() };
 
         if core::hint::likely(response.result() == 0) {
             Ok(())
@@ -116,14 +117,11 @@ impl ServiceManager {
 
     pub fn get_service_handle(&self, name: impl Into<ServiceName>) -> Result<u32, u32> {
         use generated::service_manager::*;
-        unsafe {
-            *nx::arm::tls().cast::<GetServiceHandleRequest>() =
-                GetServiceHandleRequest::new(name.into());
-        }
+        write_ipc_buffer(GetServiceHandleRequest::new(name.into()));
 
         nx::svc::send_sync_request(self.0).unwrap();
 
-        let response = unsafe { &*nx::arm::tls().cast::<GetServiceHandleResponse>() };
+        let response: GetServiceHandleResponse = unsafe { read_ipc_buffer() };
         if core::hint::likely(response.result() == 0) {
             Ok(response.service())
         } else {
@@ -138,14 +136,16 @@ impl ServiceManager {
         max_sessions: i32,
     ) -> Result<u32, u32> {
         use generated::service_manager::*;
-        unsafe {
-            *nx::arm::tls().cast::<RegisterServiceRequest>() =
-                RegisterServiceRequest::new(name.into(), is_light, max_sessions);
-        }
+        write_ipc_buffer(RegisterServiceRequest::new(
+            name.into(),
+            is_light,
+            max_sessions,
+        ));
 
         nx::svc::send_sync_request(self.0).unwrap();
 
-        let response = unsafe { &*nx::arm::tls().cast::<RegisterServiceResponse>() };
+        let response: RegisterServiceResponse = unsafe { read_ipc_buffer() };
+
         if core::hint::likely(response.result() == 0) {
             Ok(response.service())
         } else {
@@ -155,14 +155,11 @@ impl ServiceManager {
 
     pub fn unregister_service(&self, name: impl Into<ServiceName>) -> Result<(), u32> {
         use generated::service_manager::*;
-        unsafe {
-            *nx::arm::tls().cast::<UnregisterServiceRequest>() =
-                UnregisterServiceRequest::new(name.into());
-        }
+        write_ipc_buffer(UnregisterServiceRequest::new(name.into()));
 
         nx::svc::send_sync_request(self.0).unwrap();
 
-        let response = unsafe { &*nx::arm::tls().cast::<UnregisterServiceResponse>() };
+        let response: UnregisterServiceResponse = unsafe { read_ipc_buffer() };
         if core::hint::likely(response.result() == 0) {
             Ok(())
         } else {
@@ -172,13 +169,11 @@ impl ServiceManager {
 
     pub fn detach_client(&self) -> Result<(), u32> {
         use generated::service_manager::*;
-        unsafe {
-            *nx::arm::tls().cast::<DetachClientRequest>() = DetachClientRequest::new(0);
-        }
+        write_ipc_buffer(DetachClientRequest::new(0));
 
         nx::svc::send_sync_request(self.0).unwrap();
 
-        let response = unsafe { &*nx::arm::tls().cast::<DetachClientResponse>() };
+        let response: DetachClientResponse = unsafe { read_ipc_buffer() };
 
         if core::hint::likely(response.result() == 0) {
             Ok(())
