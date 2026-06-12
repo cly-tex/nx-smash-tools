@@ -168,14 +168,22 @@ fn clear_exclusive() {
     unsafe { core::arch::asm!("clrex", options(nostack)) }
 }
 
-pub struct RawMutex(UnsafeCell<u32>);
+/// Raw NX Mutex
+///
+/// # Safety Considerations
+/// This type is `Unpin` because Rust's strong ownership mechanics prevent the mutex from being mutated while it is being shared.
+/// If, however, one were to wrap the `RawMutex` inside of an `UnsafeCell` and moved the value whlie it was locked on one thread
+/// and being awaited on another thread, then it would be undefined behavior (the kernel keys off of the lock address).
+struct RawMutex(UnsafeCell<u32>);
 
 unsafe impl Send for RawMutex {}
 unsafe impl Sync for RawMutex {}
 
 impl RawMutex {
+    // TODO: Move this into the SVC section? It's a Kernel <-> Userland ABI thing
     const WAITER_MASK: u32 = 1u32 << 30;
 
+    /// Constructs an unlocked mutex
     pub const fn new() -> Self {
         // Mutex begins in unlocked state, which would be an invalid handle
         Self(UnsafeCell::new(0u32))
@@ -259,6 +267,11 @@ impl RawMutex {
     }
 
     /// Unlocks this mutex
+    ///
+    /// # Notes
+    /// - Currently, if this method is called on a mutex that is not locked by the current thread, then it is a no-op.
+    ///   This is not guaranteed to be the case in the future.
+    /// - If there are other threads waiting on this mutex, we request the kernel to arbitrate the unlock for us.
     pub fn unlock(&self) {
         let current_thread_handle = crate::thread::current_thread_handle();
 
@@ -295,6 +308,10 @@ impl Default for RawMutex {
     }
 }
 
+/// RAII-style mutex
+///
+/// This mimics the Rust STD's `Mutex` type providing a [`MutexGuard`] returned upon lock that prevents
+/// forgetting to unlock the mutex.
 pub struct Mutex<T> {
     value: UnsafeCell<T>,
     raw: RawMutex,
