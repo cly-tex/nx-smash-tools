@@ -4,6 +4,23 @@ use crate::svc::BreakReason;
 
 pub type NxResult<T> = Result<T, NxError>;
 
+pub trait NxResultExt<T> {
+    fn assert(self) -> T;
+}
+
+impl<T> NxResultExt<T> for NxResult<T> {
+    fn assert(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => {
+                crate::svc::break_now(BreakReason::ASSERT);
+                unsafe { core::arch::asm!(".word 0xdeadbeef") };
+                unsafe { core::hint::unreachable_unchecked() };
+            }
+        }
+    }
+}
+
 pub enum NxResultCode {
     Success,
     Error(NxError),

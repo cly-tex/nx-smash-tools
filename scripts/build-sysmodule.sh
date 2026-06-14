@@ -33,7 +33,7 @@ if ! command -v rustup >/dev/null 2>&1; then
 fi
 
 bin_name="${1//-/_}"
-rustup run nightly cargo build -Zjson-target-spec --target .build-files/switch.json -Zbuild-std=core,panic_abort --release -p $1
+rustup run nightly cargo build -Zjson-target-spec --target .build-files/switch.json -Zbuild-std=core,panic_abort,alloc --release -p $1
 linkle nso target/switch/release/lib${bin_name}.so target/switch/release/lib${bin_name}.nso
 npdmtool binaries/${1}/npdm.json target/switch/release/${bin_name}.npdm
 mkdir -p target/switch/release/exefs_${bin_name}

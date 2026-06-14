@@ -174,7 +174,7 @@ fn clear_exclusive() {
 /// This type is `Unpin` because Rust's strong ownership mechanics prevent the mutex from being mutated while it is being shared.
 /// If, however, one were to wrap the `RawMutex` inside of an `UnsafeCell` and moved the value whlie it was locked on one thread
 /// and being awaited on another thread, then it would be undefined behavior (the kernel keys off of the lock address).
-struct RawMutex(UnsafeCell<u32>);
+pub struct RawMutex(UnsafeCell<u32>);
 
 unsafe impl Send for RawMutex {}
 unsafe impl Sync for RawMutex {}
@@ -299,6 +299,12 @@ impl RawMutex {
 
             value = load_exclusive(self.0.get());
         }
+    }
+
+    pub fn locked_by_this_thread(&self) -> bool {
+        let current_thread_handle = crate::thread::current_thread_handle();
+
+        (unsafe { *self.0.get() } & !Self::WAITER_MASK) == current_thread_handle
     }
 }
 

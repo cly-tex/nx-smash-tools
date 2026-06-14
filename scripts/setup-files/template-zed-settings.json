@@ -13,7 +13,7 @@
             "-Zjson-target-spec",
             "--target",
             "{{PROJECT_DIR}}/.build-files/switch.json",
-            "-Zbuild-std=core"
+            "-Zbuild-std=core,panic_abort,alloc"
           ]
         }
       }

@@ -12,6 +12,8 @@
 //! Much of the code in this library is inspired by [libnx](https://github.com/switchbrew/libnx) and implementations have been referenced.
 #![no_std]
 
+extern crate alloc;
+
 mod arm;
 pub mod handle;
 pub mod init;
@@ -20,5 +22,6 @@ pub mod mutex;
 pub mod result;
 pub mod svc;
 pub mod thread;
+pub mod virtmem;
 
 pub const PAGE_SIZE: usize = 0x1000;

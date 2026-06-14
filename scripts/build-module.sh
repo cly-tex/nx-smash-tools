@@ -29,7 +29,7 @@ if ! command -v rustup >/dev/null 2>&1; then
     exit
 fi
 
-rustup run nightly cargo build -Zjson-target-spec --target .build-files/switch.json -Zbuild-std=core,panic_abort --release -p $1
+rustup run nightly cargo build -Zjson-target-spec --target .build-files/switch.json -Zbuild-std=core,panic_abort,alloc --release -p $1
 
 bin_name="${1//-/_}"
 

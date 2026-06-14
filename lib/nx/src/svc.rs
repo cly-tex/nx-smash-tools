@@ -1,5 +1,5 @@
 use core::{
-    ffi::{CStr, c_char},
+    ffi::{CStr, c_char, c_void},
     mem::MaybeUninit,
     time::Duration,
 };
@@ -9,6 +9,24 @@ use crate::result::{NxResult, NxResultCode};
 pub mod info;
 
 core::arch::global_asm!(include_str!("svc.s"));
+
+#[derive(Debug, Copy, Clone)]
+pub struct MemoryQuery {
+    pub info: MemoryInfo,
+    pub page_info: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct MemoryInfo {
+    pub base_address: u64,
+    pub size: u64,
+    pub memory_type: u32,
+    pub memory_attr: u32,
+    pub memory_perm: u32,
+    pub ipc_ref_count: u32,
+    pub device_ref_count: u32,
+}
 
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -45,6 +63,12 @@ pub enum YieldType {
 }
 
 unsafe extern "C" {
+    fn svcSetHeapSize(out_address: *mut u64, size: u64) -> NxResultCode;
+    fn svcQueryMemory(
+        out_info: *mut MemoryInfo,
+        out_page_info: *mut u32,
+        address: u64,
+    ) -> NxResultCode;
     fn svcSleepThread(nanos: u64);
     fn svcCloseHandle(handle: u32) -> NxResultCode;
     fn svcArbitrateLock(thread_handle: u32, address: *mut u32, value: u32) -> NxResultCode;
@@ -53,6 +77,37 @@ unsafe extern "C" {
     fn svcSendSyncRequest(handle: u32) -> NxResultCode;
     fn svcBreak(reason: BreakReason, _: u64, _: u64);
     fn svcGetInfo(out: *mut u64, info_type: u32, handle: u32, info_subtype: u64) -> NxResultCode;
+}
+
+/// Attempts to set the size of the heap region
+///
+/// # Safety
+/// Calling this method could invalidate any allocations onto the heap that have already been made.
+///
+/// The caller must ensure that:
+/// 1. If [`set_heap_size`] has already been called and the returned pointer is different from the previous heap pointer,
+///    all existing heap allocations are invalidated immediately and no longer accessed
+/// 2. If the pointer is the same, then all heap allocations past `heap_base.add(size)` are invalidated
+///
+/// Because both of these are very difficult to enforce in the program lifecycle, this method should
+/// only be called once during the initialization of the app and before any heap is actually used.
+pub unsafe fn set_heap_size(size: u64) -> NxResult<*mut c_void> {
+    let mut heap_base = MaybeUninit::uninit();
+    let res = unsafe { svcSetHeapSize(heap_base.as_mut_ptr(), size) };
+
+    res.then(|| unsafe { heap_base.assume_init() } as *mut c_void)
+}
+
+pub fn query_memory(address: u64) -> NxResult<MemoryQuery> {
+    let mut out_info = MaybeUninit::uninit();
+    let mut out_page_info = MaybeUninit::uninit();
+
+    let res = unsafe { svcQueryMemory(out_info.as_mut_ptr(), out_page_info.as_mut_ptr(), address) };
+
+    res.then(|| MemoryQuery {
+        info: unsafe { out_info.assume_init() },
+        page_info: unsafe { out_page_info.assume_init() },
+    })
 }
 
 /// Yields the current thread

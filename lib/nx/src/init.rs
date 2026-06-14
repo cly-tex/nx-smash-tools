@@ -15,4 +15,5 @@ pub unsafe extern "C" fn nx_init(thread_handle: u32) {
     });
 
     unsafe { crate::memory::init() };
+    unsafe { crate::virtmem::init() };
 }
