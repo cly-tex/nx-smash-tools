@@ -1,6 +1,9 @@
 use core::{mem::MaybeUninit, ops::Range};
 
-use crate::{handle::ProcessHandle, result::NxResult};
+use crate::{
+    handle::{InvalidHandle, ProcessHandle},
+    result::NxResult,
+};
 
 use super::svcGetInfo;
 
@@ -12,6 +15,7 @@ enum InfoType {
     HeapRegionSize = 5,
     TotalMemorySize = 6,
     UsedMemorySize = 7,
+    RandomEntropy = 11,
     AslrRegionAddr = 12,
     AslrRegionSize = 13,
     StackRegionAddr = 14,
@@ -20,14 +24,14 @@ enum InfoType {
 }
 
 macro_rules! get_u64 {
-    ($info_ty:ident, $handle:expr) => {{
+    ($info_ty:ident, $handle:expr $(, $sub:expr)?) => {{
         let mut out = MaybeUninit::uninit();
         unsafe {
             svcGetInfo(
                 out.as_mut_ptr(),
                 InfoType::$info_ty as u32,
                 $handle.into_inner(),
-                0,
+                0 $(+ $sub)?,
             )
         }
         .then(|| unsafe { out.assume_init() })
@@ -77,4 +81,14 @@ pub fn total_memory_size() -> NxResult<u64> {
 #[inline(always)]
 pub fn used_memory_size() -> NxResult<u64> {
     get_u64!(UsedMemorySize, ProcessHandle::THIS_PROCESS)
+}
+
+#[inline(always)]
+pub fn random_entropy() -> NxResult<[u64; 4]> {
+    Ok([
+        get_u64!(RandomEntropy, InvalidHandle, 0)?,
+        get_u64!(RandomEntropy, InvalidHandle, 1)?,
+        get_u64!(RandomEntropy, InvalidHandle, 2)?,
+        get_u64!(RandomEntropy, InvalidHandle, 3)?,
+    ])
 }

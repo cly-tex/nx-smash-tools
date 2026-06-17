@@ -1,4 +1,14 @@
 #[repr(transparent)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct InvalidHandle;
+
+impl InvalidHandle {
+    pub const fn into_inner(self) -> u32 {
+        0u32
+    }
+}
+
+#[repr(transparent)]
 #[derive(Copy, Clone)]
 pub struct ProcessHandle(u32);
 

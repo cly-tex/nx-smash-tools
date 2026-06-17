@@ -64,6 +64,8 @@ pub enum YieldType {
 
 unsafe extern "C" {
     fn svcSetHeapSize(out_address: *mut u64, size: u64) -> NxResultCode;
+    fn svcMapMemory(dst_address: u64, src_address: u64, size: u64) -> NxResultCode;
+    fn svcUnmapMemory(dst_address: u64, src_address: u64, size: u64) -> NxResultCode;
     fn svcQueryMemory(
         out_info: *mut MemoryInfo,
         out_page_info: *mut u32,
@@ -96,6 +98,18 @@ pub unsafe fn set_heap_size(size: u64) -> NxResult<*mut c_void> {
     let res = unsafe { svcSetHeapSize(heap_base.as_mut_ptr(), size) };
 
     res.then(|| unsafe { heap_base.assume_init() } as *mut c_void)
+}
+
+pub fn map_memory(src_address: u64, dst_address: u64, size: u64) -> NxResult<()> {
+    let res = unsafe { svcMapMemory(dst_address, src_address, size) };
+
+    res.then_ok(())
+}
+
+pub unsafe fn unmap_memory(src_address: u64, dst_address: u64, size: u64) -> NxResult<()> {
+    let res = unsafe { svcUnmapMemory(dst_address, src_address, size) };
+
+    res.then_ok(())
 }
 
 pub fn query_memory(address: u64) -> NxResult<MemoryQuery> {
@@ -187,8 +201,16 @@ pub fn send_sync_request(session_handle: u32) -> NxResult<()> {
     res.then_ok(())
 }
 
+#[inline(always)]
 pub fn break_now(reason: BreakReason) {
     unsafe {
         svcBreak(reason, 0, 0);
     }
+}
+
+#[inline(always)]
+pub fn assert_fail() -> ! {
+    break_now(BreakReason::ASSERT);
+    unsafe { core::arch::asm!(".word 0xdeadbeef") };
+    unsafe { core::hint::unreachable_unchecked() };
 }

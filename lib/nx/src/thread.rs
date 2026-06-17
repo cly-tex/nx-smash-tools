@@ -1,8 +1,15 @@
-use core::mem::offset_of;
+use core::{
+    mem::{MaybeUninit, offset_of},
+    ptr::NonNull,
+};
+
+use alloc::boxed::Box;
+use chacha::ChaCha;
 
 #[repr(C, align(16))]
 pub struct ThreadLocalVariables {
-    pub thread_handle: u32,
+    pub(crate) random: MaybeUninit<Box<ChaCha>>,
+    pub(crate) thread_handle: u32,
 }
 
 /// Thread Local Storage

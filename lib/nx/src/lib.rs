@@ -19,6 +19,7 @@ pub mod handle;
 pub mod init;
 pub mod memory;
 pub mod mutex;
+pub mod random;
 pub mod result;
 pub mod svc;
 pub mod thread;
