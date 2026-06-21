@@ -248,8 +248,10 @@ pub fn with_virtmem<R>(f: impl FnOnce(Pin<&mut VirtualMemory>) -> R) -> R {
 /// Maps an address with the specified allocation type
 ///
 /// # Safety
-/// The caller must ensure that address is in user-mapped memory space and is valid for read/writes between
+/// - The caller must ensure that address is in user-mapped memory space and is valid for read/writes between
 /// `address` and `address.add(size)`
+/// - The caller must ensure that the the memory range between `address` and `address.add(size)` is not unmapped from
+///   userspace before the corresponding unmap
 pub unsafe fn map(
     address: *mut u8,
     size: usize,
@@ -257,4 +259,9 @@ pub unsafe fn map(
 ) -> NxResult<VirtualReservationHandle> {
     // SAFETY: User upholds safety restrictions
     with_virtmem(|mut virtmem| unsafe { virtmem.reserve_and_map(ty, address, size, 0x4000) })
+}
+
+/// Releases a virtual memory reservation
+pub fn unmap(handle: VirtualReservationHandle) -> NxResult<()> {
+    with_virtmem(|mut virtmem| virtmem.release_allocation(handle))
 }

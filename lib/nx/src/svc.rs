@@ -4,7 +4,10 @@ use core::{
     time::Duration,
 };
 
-use crate::result::{NxResult, NxResultCode};
+use crate::{
+    handle::ThreadHandle,
+    result::{NxResult, NxResultCode},
+};
 
 pub mod info;
 
@@ -62,6 +65,13 @@ pub enum YieldType {
     AnyThread = u64::MAX - 1,
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ThreadActivity {
+    Runnable = 0,
+    Paused = 1,
+}
+
 unsafe extern "C" {
     fn svcSetHeapSize(out_address: *mut u64, size: u64) -> NxResultCode;
     fn svcMapMemory(dst_address: u64, src_address: u64, size: u64) -> NxResultCode;
@@ -71,14 +81,32 @@ unsafe extern "C" {
         out_page_info: *mut u32,
         address: u64,
     ) -> NxResultCode;
+    fn svcCreateThread(
+        out_handle: *mut u32,
+        entry: extern "C" fn(*mut c_void),
+        entry_args: *mut c_void,
+        stack_top: *mut c_void,
+        priority: i32,
+        core_id: i32,
+    ) -> NxResultCode;
+    fn svcStartThread(handle: u32);
+    fn svcExitThread();
     fn svcSleepThread(nanos: u64);
     fn svcCloseHandle(handle: u32) -> NxResultCode;
+    fn svcWaitSynchronization(
+        out_signaled_handle: *mut u32,
+        handles: *const u32,
+        handle_count: u32,
+        timeout_ns: u64,
+    ) -> NxResultCode;
+    fn svcCancelSynchronization(handle: u32) -> NxResultCode;
     fn svcArbitrateLock(thread_handle: u32, address: *mut u32, value: u32) -> NxResultCode;
     fn svcArbitrateUnlock(address: *mut u32) -> NxResultCode;
     fn svcConnectToNamedPort(out_handle: *mut u32, port_name: *const c_char) -> NxResultCode;
     fn svcSendSyncRequest(handle: u32) -> NxResultCode;
     fn svcBreak(reason: BreakReason, _: u64, _: u64);
     fn svcGetInfo(out: *mut u64, info_type: u32, handle: u32, info_subtype: u64) -> NxResultCode;
+    fn svcSetThreadActivity(handle: u32, activity: ThreadActivity) -> NxResultCode;
 }
 
 /// Attempts to set the size of the heap region
@@ -124,6 +152,42 @@ pub fn query_memory(address: u64) -> NxResult<MemoryQuery> {
     })
 }
 
+/// # Safety
+/// - Caller must ensure that `entry_args` and `stack_top` will not be released/become invalid throughout the lifetime of the thread
+pub unsafe fn create_thread(
+    entry: extern "C" fn(*mut c_void),
+    entry_args: *mut c_void,
+    stack_top: *mut c_void,
+    thread_priority: i32,
+    core_id: i32,
+) -> NxResult<ThreadHandle> {
+    let mut out_handle = MaybeUninit::uninit();
+
+    let res = unsafe {
+        svcCreateThread(
+            out_handle.as_mut_ptr(),
+            entry,
+            entry_args,
+            stack_top,
+            thread_priority,
+            core_id,
+        )
+    };
+
+    // SAFETY: We know that the handle returned by this svc is a thread handle
+    res.then(|| unsafe { ThreadHandle::new(out_handle.assume_init()) })
+}
+
+pub fn start_thread(handle: u32) {
+    unsafe { svcStartThread(handle) };
+}
+
+pub fn exit_thread() -> ! {
+    unsafe { svcExitThread() };
+    unsafe { core::arch::asm!(".word 0xdeadbeef") };
+    unsafe { core::hint::unreachable_unchecked() };
+}
+
 /// Yields the current thread
 pub fn yield_now(ty: YieldType) {
     unsafe { svcSleepThread(ty as u64) }
@@ -144,6 +208,29 @@ pub fn sleep_thread(duration: Duration) {
 
 pub fn close_handle(handle: u32) -> NxResult<()> {
     let res = unsafe { svcCloseHandle(handle) };
+
+    res.then_ok(())
+}
+
+pub fn wait_synchronization(handles: &[u32], timeout: Option<Duration>) -> NxResult<usize> {
+    let mut out_signaled_handle = MaybeUninit::uninit();
+    let res = unsafe {
+        svcWaitSynchronization(
+            out_signaled_handle.as_mut_ptr(),
+            handles.as_ptr(),
+            handles.len() as u32,
+            match timeout {
+                Some(timeout) => timeout.as_nanos() as u64,
+                None => u64::MAX,
+            },
+        )
+    };
+
+    res.then(|| unsafe { out_signaled_handle.assume_init() as usize })
+}
+
+pub fn cancel_synchronization(handle: u32) -> NxResult<()> {
+    let res = unsafe { svcCancelSynchronization(handle) };
 
     res.then_ok(())
 }
@@ -213,4 +300,10 @@ pub fn assert_fail() -> ! {
     break_now(BreakReason::ASSERT);
     unsafe { core::arch::asm!(".word 0xdeadbeef") };
     unsafe { core::hint::unreachable_unchecked() };
+}
+
+#[inline(always)]
+pub fn set_thread_activity(handle: u32, activity: ThreadActivity) -> NxResult<()> {
+    let res = unsafe { svcSetThreadActivity(handle, activity) };
+    res.then_ok(())
 }

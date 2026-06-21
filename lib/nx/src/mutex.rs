@@ -195,6 +195,10 @@ impl RawMutex {
     /// - If this mutex is locked by another thread, this method will ask the kernel to arbitrate it for us and sleep
     ///   until it is acquired
     pub fn lock(&self) {
+        /* Implementation Note: This method would preferred to be implemented using core::sync::atomic::AtomicU32, but with
+         * a kernel arbitration being part of the implementation, it makes more logical sense to structure it manually this way
+         */
+
         let current_thread_handle: u32 = crate::thread::current_thread_handle();
 
         let mut value = load_exclusive(self.0.get());

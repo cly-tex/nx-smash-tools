@@ -1,10 +1,21 @@
 use core::{
-    mem::{MaybeUninit, offset_of},
-    ptr::NonNull,
+    cell::UnsafeCell,
+    ffi::c_void,
+    marker::PhantomData,
+    mem::{ManuallyDrop, MaybeUninit, offset_of},
+    time::Duration,
 };
 
 use alloc::boxed::Box;
 use chacha::ChaCha;
+
+use crate::{
+    handle::ThreadHandle,
+    result::{NxError, NxResult},
+    virtmem::{self, VirtualReservationHandle},
+};
+
+mod spawn;
 
 #[repr(C, align(16))]
 pub struct ThreadLocalVariables {
@@ -165,26 +176,226 @@ pub fn current_thread_handle() -> u32 {
 pub enum ThreadCreationError {
     InvalidStackSize,
     InvalidStackAlignment,
+    StackAllocationFailed(NxError),
+    CreateThreadError(NxError),
 }
 
-fn create_thread(
-    entry: &mut core::mem::ManuallyDrop<dyn FnOnce()>,
-    stack: &mut [u8],
+struct ThreadContext<R: Send, F: FnOnce() -> R + Send> {
+    entry_args: ThreadEntryArgs<R, F>,
+    user_callback: ManuallyDrop<F>,
+    return_storage: MaybeUninit<R>,
+}
+
+struct ThreadEntryArgs<R: Send, F: FnOnce() -> R + Send> {
+    user_callback: *mut ManuallyDrop<F>,
+    return_storage: *mut MaybeUninit<R>,
+}
+
+extern "C" fn thread_entrypoint<R: Send, F: FnOnce() -> R + Send>(thread_context: *mut c_void) {
+    let context = unsafe { &mut *thread_context.cast::<ThreadEntryArgs<R, F>>() };
+
+    let callback = unsafe { ManuallyDrop::take(&mut *context.user_callback) };
+
+    unsafe {
+        (*context.return_storage).write(callback());
+    }
+}
+
+pub enum WaitTimeoutError<T> {
+    TimedOut(T),
+    Other(NxError),
+}
+
+pub struct JoinHandle<R: Send + 'static>(JoinHandleInner<R>);
+
+impl<R: Send + 'static> JoinHandle<R> {
+    pub fn wait_timeout(self, timeout: Duration) -> Result<R, WaitTimeoutError<Self>> {
+        self.0.wait_timeout(timeout).map_err(|e| match e {
+            WaitTimeoutError::TimedOut(handle) => WaitTimeoutError::TimedOut(Self(handle)),
+            WaitTimeoutError::Other(e) => WaitTimeoutError::Other(e),
+        })
+    }
+
+    pub fn wait(self) -> NxResult<R> {
+        self.0.wait()
+    }
+}
+
+pub struct LocalJoinHandle<'a, R: Send + 'a> {
+    inner: JoinHandleInner<R>,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<'a, R: Send + 'a> LocalJoinHandle<'a, R> {
+    pub fn wait_timeout(self, timeout: Duration) -> Result<R, WaitTimeoutError<Self>> {
+        self.inner.wait_timeout(timeout).map_err(|e| match e {
+            WaitTimeoutError::TimedOut(handle) => WaitTimeoutError::TimedOut(Self {
+                inner: handle,
+                marker: PhantomData,
+            }),
+            WaitTimeoutError::Other(e) => WaitTimeoutError::Other(e),
+        })
+    }
+
+    pub fn wait(self) -> NxResult<R> {
+        self.inner.wait()
+    }
+}
+
+struct JoinHandleInner<R: Send> {
+    thread_handle: ThreadHandle,
+    virtmem_handle: VirtualReservationHandle,
+    return_storage: *mut MaybeUninit<R>,
+}
+
+impl<R: Send> JoinHandleInner<R> {
+    pub fn wait_timeout(self, timeout: Duration) -> Result<R, WaitTimeoutError<Self>> {
+        match crate::svc::wait_synchronization(&[self.thread_handle.into_inner()], Some(timeout)) {
+            Ok(_) => Ok(unsafe { (*self.return_storage).assume_init_read() }),
+            Err(crate::result::svc::TIMED_OUT) => Err(WaitTimeoutError::TimedOut(self)),
+            Err(other) => Err(WaitTimeoutError::Other(other)),
+        }
+    }
+
+    pub fn wait(self) -> NxResult<R> {
+        crate::svc::wait_synchronization(&[self.thread_handle.into_inner()], None)
+            .map(move |_| unsafe { (*self.return_storage).assume_init_read() })
+    }
+}
+
+fn create_thread<'a, R: Send + 'a, F: FnOnce() -> R + Send + 'a>(
+    entry: F,
+    stack: *mut u8,
+    stack_size: usize,
     priority: i32,
     core: i32,
-) -> Result<(), ThreadCreationError> {
-    if !stack.len().is_multiple_of(crate::PAGE_SIZE) {
+) -> Result<JoinHandleInner<R>, ThreadCreationError> {
+    if !stack_size.is_multiple_of(crate::PAGE_SIZE) {
         return Err(ThreadCreationError::InvalidStackSize);
     }
 
+    let modified_stack_size = size_of::<ThreadContext<R, F>>() + stack_size;
+    let modified_stack_size =
+        (modified_stack_size + crate::PAGE_SIZE - 1) & !(crate::PAGE_SIZE - 1);
+
     // Same as `as_ptr().is_aligned_to()`
-    if stack
-        .as_ptr()
-        .expose_provenance()
-        .is_multiple_of(crate::PAGE_SIZE)
-    {
+    if stack.expose_provenance().is_multiple_of(crate::PAGE_SIZE) {
         return Err(ThreadCreationError::InvalidStackAlignment);
     }
 
+    let virtmem = unsafe {
+        virtmem::map(stack, modified_stack_size, virtmem::AllocationType::Stack)
+            .map_err(ThreadCreationError::StackAllocationFailed)?
+    };
+
+    let stack_top = unsafe {
+        virtmem
+            .as_ptr()
+            .add(modified_stack_size - size_of::<ThreadContext<R, F>>())
+    };
+
+    let context = stack_top.cast::<ThreadContext<R, F>>();
+    let user_callback_ptr = unsafe {
+        stack_top
+            .add(offset_of!(ThreadContext::<R, F>, user_callback))
+            .cast::<ManuallyDrop<F>>()
+    };
+    let return_storage_ptr = unsafe {
+        stack_top
+            .add(offset_of!(ThreadContext::<R, F>, return_storage))
+            .cast::<MaybeUninit<R>>()
+    };
+
+    unsafe {
+        core::ptr::write(
+            context,
+            ThreadContext {
+                entry_args: ThreadEntryArgs {
+                    user_callback: user_callback_ptr,
+                    return_storage: return_storage_ptr,
+                },
+                user_callback: ManuallyDrop::new(entry),
+                return_storage: MaybeUninit::uninit(),
+            },
+        );
+    }
+
+    // SAFETY: If this SVC is successful then we will preserve the virmem allocation throughout the lifetime of the thread handle
+    let handle = match unsafe {
+        crate::svc::create_thread(
+            thread_entrypoint::<R, F>,
+            context.cast(),
+            stack_top.cast(),
+            priority,
+            core,
+        )
+    } {
+        Ok(thread_handle) => thread_handle,
+        Err(e) => {
+            virtmem::unmap(virtmem);
+
+            return Err(ThreadCreationError::CreateThreadError(e));
+        }
+    };
+
     Ok(())
+}
+
+pub struct LocalThreadGroup {
+    terminate_list: UnsafeCell<[u32; 0x40]>,
+    terminate_cursor: UnsafeCell<usize>,
+}
+
+impl LocalThreadGroup {
+    pub fn builder<'a, F: FnOnce() -> R + 'a, R: Send + 'a>(
+        &'a self,
+    ) -> LocalGroupThreadBuilder<'a, F, R> {
+        todo!()
+    }
+
+    pub fn spawn<'a, R: Send + 'a>(&'a self, f: impl FnOnce() -> R + 'a) -> LocalJoinHandle<'a, R> {
+        todo!()
+    }
+}
+
+pub struct LocalGroupPendingThread<'a, R: Send + 'a> {
+    marker: PhantomData<&'a R>,
+}
+
+pub struct LocalGroupThreadBuilder<'a, F: FnOnce() -> R + 'a, R: Send + 'a> {
+    marker: PhantomData<&'a F>,
+}
+
+pub struct PendingThread<R: Send + 'static> {
+    marker: PhantomData<R>,
+}
+
+pub struct ThreadBuilder<F: FnOnce() -> R + 'static, R: Send + 'static> {
+    stack: *mut u8,
+    stack_size: usize,
+    priority: i32,
+    core_id: i32,
+    marker: PhantomData<F>,
+}
+
+impl<F: FnOnce() -> R + 'static, R: Send + 'static> ThreadBuilder<F, R> {
+    pub fn with_stack(mut self, ptr: *mut u8, size: usize) -> Self {
+        self.stack = ptr;
+        self.stack_size = size;
+        self
+    }
+
+    pub fn with_priority(mut self, prio: i32) -> Self {
+        self.priority = prio;
+        self
+    }
+
+    pub fn with_core(mut self, core_id: i32) -> Self {
+        self.core_id = core_id;
+        self
+    }
+
+    pub fn build(self, entry: F) -> Result<PendingThread<R>, ThreadCreationError> {
+        todo!()
+    }
 }
